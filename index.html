@@ -241,7 +241,7 @@
 
   <!-- 练习区 -->
   <main class="practice-area" id="practiceArea">
-    <div class="empty-state" id="emptyState">请从左侧选择知识点开始练习</div>
+    <div class="empty-state" id="emptyState">请选择知识点开始练习</div>
     <div id="practiceContent" style="display:none;">
       <div class="practice-header">
         <span class="practice-title" id="practiceTitle"></span>
@@ -506,7 +506,7 @@
     currentList = filtered;
   }
 
-  /** Fisher-Yates洗牌 */
+  /** Fisher-Yates洗牌（原地修改） */
   function shuffle(arr) {
     for (var i = arr.length - 1; i > 0; i--) {
       var j = Math.floor(Math.random() * (i + 1));
@@ -514,7 +514,6 @@
       arr[i] = arr[j];
       arr[j] = tmp;
     }
-    return arr;
   }
 
   /** 渲染当前题目 */
@@ -655,8 +654,16 @@
     // 基本格式校验
     for (var i = 0; i < parsed.length; i++) {
       var q = parsed[i];
-      if (!q.id || !q.knowledgePoint || !q.question || !Array.isArray(q.options) || typeof q.correct !== "number") {
-        alert("第" + (i + 1) + "道题格式不正确，请检查必需字段：id, knowledgePoint, question, options, correct。");
+      if (!q.id || !q.knowledgePoint || !q.question || !Array.isArray(q.options) || q.options.length === 0 || typeof q.correct !== "number") {
+        alert("第" + (i + 1) + "道题格式不正确，请检查必需字段：id, knowledgePoint, question, options（非空数组）, correct。");
+        return;
+      }
+      if (q.correct < 0 || q.correct >= q.options.length) {
+        alert("第" + (i + 1) + "道题的correct索引超出options范围。");
+        return;
+      }
+      if (typeof q.explanation !== "string") {
+        alert("第" + (i + 1) + "道题缺少explanation字段。");
         return;
       }
     }
@@ -689,10 +696,10 @@
   // ==================== 工具函数 ====================
 
   /** HTML转义防止XSS */
+  var escapeEl = document.createElement("div");
   function escapeHtml(str) {
-    var div = document.createElement("div");
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
+    escapeEl.textContent = str;
+    return escapeEl.innerHTML;
   }
 
   // ==================== 初始化 ====================
