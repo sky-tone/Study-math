@@ -1,0 +1,1128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>基于题库的学习助手</title>
+<!--
+  使用说明：
+  1. 打开此文件即可开始学习，默认加载内嵌示例题库。
+  2. 左侧/上方为知识点大纲，点击可筛选练习范围。
+  3. 右侧/下方为练习区，选择答案后点击"提交答案"查看反馈。
+  4. 点击"下一题"继续练习，系统优先出掌握度低的题目。
+  5. 页面底部可导入自定义题库（JSON格式、Word或PDF格式）或重置学习进度。
+-->
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f0f2f5;
+    color: #333;
+    line-height: 1.6;
+  }
+
+  /* 顶部标题 */
+  header {
+    background: #4a90d9;
+    color: #fff;
+    padding: 1.2rem 1.5rem;
+    text-align: center;
+  }
+  header h1 { font-size: 1.5rem; margin-bottom: 0.3rem; }
+  header p { font-size: 0.9rem; opacity: 0.9; }
+
+  /* 主区域 */
+  .main-container {
+    display: flex;
+    gap: 1.2rem;
+    max-width: 1100px;
+    margin: 1.2rem auto;
+    padding: 0 1rem;
+  }
+
+  /* 左侧大纲 */
+  .sidebar {
+    flex: 0 0 280px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    padding: 1rem;
+    align-self: flex-start;
+  }
+  .sidebar h2 { font-size: 1.1rem; margin-bottom: 0.8rem; color: #4a90d9; }
+  .kp-list { list-style: none; }
+  .kp-item {
+    padding: 0.7rem 0.8rem;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 0.4rem;
+    transition: background 0.2s;
+    border: 1px solid transparent;
+  }
+  .kp-item:hover { background: #e8f0fe; }
+  .kp-item.active { background: #d2e3fc; border-color: #4a90d9; }
+  .kp-name { font-weight: 600; font-size: 0.95rem; }
+  .kp-meta { font-size: 0.8rem; color: #666; margin-top: 0.2rem; }
+  .kp-progress-bar {
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 3px;
+    margin-top: 0.3rem;
+    overflow: hidden;
+  }
+  .kp-progress-fill {
+    height: 100%;
+    background: #4caf50;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  /* 右侧练习区 */
+  .practice-area {
+    flex: 1;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    padding: 1.5rem;
+    min-height: 400px;
+  }
+  .practice-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .practice-title { font-size: 1rem; color: #4a90d9; font-weight: 600; }
+  .practice-counter { font-size: 0.85rem; color: #888; }
+
+  .question-text {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    padding: 0.8rem;
+    background: #f9fafe;
+    border-radius: 6px;
+    border-left: 4px solid #4a90d9;
+  }
+
+  .options-list { list-style: none; margin-bottom: 1rem; }
+  .option-item {
+    display: flex;
+    align-items: center;
+    padding: 0.6rem 0.8rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .option-item:hover:not(.disabled) { background: #f5f7fa; border-color: #4a90d9; }
+  .option-item.disabled { cursor: default; opacity: 0.85; }
+  .option-item.correct-answer { background: #e8f5e9; border-color: #4caf50; }
+  .option-item.wrong-answer { background: #ffebee; border-color: #f44336; }
+  .option-item input[type="radio"] { margin-right: 0.6rem; flex-shrink: 0; }
+  .option-label { font-weight: 600; margin-right: 0.4rem; color: #4a90d9; }
+
+  .explanation-box {
+    display: none;
+    padding: 0.8rem;
+    margin-bottom: 1rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+  }
+  .explanation-box.show { display: block; }
+  .explanation-box.correct { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+  .explanation-box.wrong { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+
+  .btn {
+    display: inline-block;
+    padding: 0.6rem 1.4rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: background 0.2s, opacity 0.2s;
+  }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-primary { background: #4a90d9; color: #fff; }
+  .btn-primary:hover:not(:disabled) { background: #3a7bc8; }
+  .btn-success { background: #4caf50; color: #fff; }
+  .btn-success:hover:not(:disabled) { background: #43a047; }
+  .btn-danger { background: #f44336; color: #fff; }
+  .btn-danger:hover:not(:disabled) { background: #e53935; }
+  .btn-secondary { background: #78909c; color: #fff; }
+  .btn-secondary:hover:not(:disabled) { background: #607d8b; }
+
+  .action-buttons { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+  .empty-state {
+    text-align: center;
+    color: #999;
+    padding: 3rem 1rem;
+    font-size: 1rem;
+  }
+
+  .cycle-notice {
+    display: none;
+    padding: 0.5rem 0.8rem;
+    margin-bottom: 0.8rem;
+    background: #fff3e0;
+    color: #e65100;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    border: 1px solid #ffe0b2;
+  }
+  .cycle-notice.show { display: block; }
+
+  /* 底部区域 */
+  .footer-area {
+    max-width: 1100px;
+    margin: 1.2rem auto;
+    padding: 0 1rem 2rem;
+  }
+  .import-section {
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    padding: 1rem 1.5rem;
+    margin-bottom: 1rem;
+  }
+  .import-toggle {
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #4a90d9;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .import-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+  .import-toggle .arrow.open { transform: rotate(90deg); }
+  .import-body { display: none; margin-top: 0.8rem; }
+  .import-body.show { display: block; }
+  .import-body textarea {
+    width: 100%;
+    min-height: 120px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 0.6rem;
+    font-family: monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+    margin-bottom: 0.6rem;
+  }
+  .import-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
+
+  .import-tabs { display: flex; gap: 0; margin-bottom: 0.8rem; border-bottom: 2px solid #e0e0e0; }
+  .import-tab {
+    padding: 0.5rem 1.2rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #666;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.2s, border-color 0.2s;
+    user-select: none;
+  }
+  .import-tab:hover { color: #4a90d9; }
+  .import-tab.active { color: #4a90d9; border-bottom-color: #4a90d9; }
+  .import-tab-content { display: none; }
+  .import-tab-content.active { display: block; }
+
+  .file-upload-area {
+    border: 2px dashed #ccc;
+    border-radius: 8px;
+    padding: 1.5rem;
+    text-align: center;
+    margin-bottom: 0.6rem;
+    transition: border-color 0.2s, background 0.2s;
+    cursor: pointer;
+  }
+  .file-upload-area:hover { border-color: #4a90d9; background: #f5f8fd; }
+  .file-upload-area.dragover { border-color: #4a90d9; background: #e8f0fe; }
+  .file-upload-icon { font-size: 2rem; margin-bottom: 0.4rem; }
+  .file-upload-text { font-size: 0.9rem; color: #666; margin-bottom: 0.4rem; }
+  .file-upload-hint { font-size: 0.8rem; color: #999; }
+  .file-upload-name { font-size: 0.85rem; color: #4a90d9; font-weight: 600; margin-top: 0.4rem; }
+  .file-upload-area input[type="file"] { display: none; }
+
+  .format-help {
+    background: #f9fafe;
+    border: 1px solid #e3eaf5;
+    border-radius: 6px;
+    padding: 0.8rem;
+    margin-bottom: 0.8rem;
+    font-size: 0.8rem;
+    color: #555;
+    line-height: 1.7;
+  }
+  .format-help summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #4a90d9;
+    font-size: 0.85rem;
+  }
+  .format-help pre {
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 4px;
+    padding: 0.6rem;
+    margin-top: 0.4rem;
+    overflow-x: auto;
+    font-size: 0.78rem;
+    white-space: pre-wrap;
+  }
+
+  .parse-status {
+    padding: 0.6rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    margin-bottom: 0.6rem;
+    display: none;
+  }
+  .parse-status.show { display: block; }
+  .parse-status.success { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+  .parse-status.error { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }
+  .parse-status.loading { background: #e3f2fd; color: #1565c0; border: 1px solid #90caf9; }
+
+  /* 响应式 */
+  @media (max-width: 600px) {
+    .main-container { flex-direction: column; }
+    .sidebar { flex: none; width: 100%; }
+    .practice-area { min-height: 300px; }
+    header h1 { font-size: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>基于题库的学习助手</h1>
+  <p>通过练习逐步掌握知识点，系统自动跟踪学习进度</p>
+</header>
+
+<div class="main-container">
+  <!-- 知识点大纲 -->
+  <aside class="sidebar" id="sidebar">
+    <h2>知识点大纲</h2>
+    <ul class="kp-list" id="kpList"></ul>
+  </aside>
+
+  <!-- 练习区 -->
+  <main class="practice-area" id="practiceArea">
+    <div class="empty-state" id="emptyState">请选择知识点开始练习</div>
+    <div id="practiceContent" style="display:none;">
+      <div class="practice-header">
+        <span class="practice-title" id="practiceTitle"></span>
+        <span class="practice-counter" id="practiceCounter"></span>
+      </div>
+      <div class="cycle-notice" id="cycleNotice">已完成一轮，将从头开始循环练习。</div>
+      <div class="question-text" id="questionText"></div>
+      <ul class="options-list" id="optionsList"></ul>
+      <div class="explanation-box" id="explanationBox"></div>
+      <div class="action-buttons">
+        <button class="btn btn-primary" id="submitBtn" disabled>提交答案</button>
+        <button class="btn btn-success" id="nextBtn" style="display:none;">下一题</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="footer-area">
+  <div class="import-section">
+    <div class="import-toggle" id="importToggle">
+      <span class="arrow" id="importArrow">▶</span> 导入自定义题库
+    </div>
+    <div class="import-body" id="importBody">
+      <div class="import-tabs">
+        <div class="import-tab active" data-tab="json">JSON导入</div>
+        <div class="import-tab" data-tab="file">Word/PDF导入</div>
+      </div>
+      <div class="import-tab-content active" id="tabJson">
+        <textarea id="importTextarea" placeholder='粘贴JSON题库数组，格式示例：[{"id":"q1","knowledgePoint":"科学","question":"...","options":["A","B"],"correct":0,"explanation":"..."}]'></textarea>
+        <div class="import-actions">
+          <button class="btn btn-primary" id="loadBtn">加载题库</button>
+          <button class="btn btn-danger" id="resetBtn">重置学习进度</button>
+        </div>
+      </div>
+      <div class="import-tab-content" id="tabFile">
+        <details class="format-help">
+          <summary>📖 Word/PDF题库格式说明（点击展开）</summary>
+          <p>请在Word或PDF文件中按以下格式编写题目，每道题之间用空行分隔：</p>
+          <pre>知识点：数学
+题目：2 + 2 = ?
+A. 3
+B. 4
+C. 5
+D. 6
+答案：B
+解析：2+2=4，故选B。
+
+知识点：历史
+题目：中华人民共和国成立于哪一年？
+A. 1945年
+B. 1949年
+C. 1950年
+D. 1952年
+答案：B
+解析：中华人民共和国于1949年10月1日成立，故选B。</pre>
+          <p>⚠️ 注意：每道题必须包含"知识点"、"题目"、选项（A/B/C/D...）、"答案"和"解析"。</p>
+        </details>
+        <div class="file-upload-area" id="fileUploadArea">
+          <input type="file" id="fileInput" accept=".docx,.pdf">
+          <div class="file-upload-icon">📄</div>
+          <div class="file-upload-text">点击选择文件或拖拽文件到此处</div>
+          <div class="file-upload-hint">支持 .docx (Word) 和 .pdf 格式</div>
+          <div class="file-upload-name" id="fileName"></div>
+        </div>
+        <div class="parse-status" id="parseStatus"></div>
+        <div class="import-actions">
+          <button class="btn btn-primary" id="parseFileBtn" disabled>解析并导入</button>
+          <button class="btn btn-danger" id="resetBtn2">重置学习进度</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Word文档解析库 (mammoth.js) -->
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<!-- PDF解析库 (pdf.js) -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+
+<script>
+(function() {
+  "use strict";
+
+  // ==================== 示例题库 ====================
+  var DEFAULT_QUESTIONS = [
+    {
+      id: "m1",
+      knowledgePoint: "数学",
+      question: "2 + 2 = ?",
+      options: ["3", "4", "5", "6"],
+      correct: 1,
+      explanation: "2+2=4，故选B。"
+    },
+    {
+      id: "m2",
+      knowledgePoint: "数学",
+      question: "3 × 7 = ?",
+      options: ["18", "20", "21", "24"],
+      correct: 2,
+      explanation: "3×7=21，故选C。"
+    },
+    {
+      id: "m3",
+      knowledgePoint: "数学",
+      question: "100 ÷ 4 = ?",
+      options: ["20", "25", "30", "50"],
+      correct: 1,
+      explanation: "100÷4=25，故选B。"
+    },
+    {
+      id: "m4",
+      knowledgePoint: "数学",
+      question: "15 - 8 = ?",
+      options: ["5", "6", "7", "8"],
+      correct: 2,
+      explanation: "15-8=7，故选C。"
+    },
+    {
+      id: "h1",
+      knowledgePoint: "历史",
+      question: "中华人民共和国成立于哪一年？",
+      options: ["1945年", "1949年", "1950年", "1952年"],
+      correct: 1,
+      explanation: "中华人民共和国于1949年10月1日成立，故选B。"
+    },
+    {
+      id: "h2",
+      knowledgePoint: "历史",
+      question: "秦朝的建立者是谁？",
+      options: ["刘邦", "项羽", "嬴政", "李斯"],
+      correct: 2,
+      explanation: "秦始皇嬴政统一六国，建立秦朝，故选C。"
+    },
+    {
+      id: "h3",
+      knowledgePoint: "历史",
+      question: "丝绸之路的起点城市是？",
+      options: ["洛阳", "长安", "开封", "北京"],
+      correct: 1,
+      explanation: "丝绸之路以长安（今西安）为起点，故选B。"
+    }
+  ];
+
+  // ==================== 全局状态 ====================
+  var questions = [];          // 当前题库
+  var progress = {};           // 学习进度 { id: { correct: n, wrong: n } }
+  var knowledgePoints = [];    // 知识点名称列表
+  var currentKP = null;        // 当前筛选的知识点（null表示全部）
+  var currentList = [];        // 当前排序后的题目列表
+  var currentIndex = 0;        // 当前题目索引
+  var selectedOption = -1;     // 用户选中的选项索引
+  var submitted = false;       // 当前题目是否已提交
+
+  var STORAGE_KEY = "learningProgress";
+
+  // ==================== DOM引用 ====================
+  var kpListEl = document.getElementById("kpList");
+  var practiceContent = document.getElementById("practiceContent");
+  var emptyState = document.getElementById("emptyState");
+  var practiceTitle = document.getElementById("practiceTitle");
+  var practiceCounter = document.getElementById("practiceCounter");
+  var cycleNotice = document.getElementById("cycleNotice");
+  var questionText = document.getElementById("questionText");
+  var optionsList = document.getElementById("optionsList");
+  var explanationBox = document.getElementById("explanationBox");
+  var submitBtn = document.getElementById("submitBtn");
+  var nextBtn = document.getElementById("nextBtn");
+  var importToggle = document.getElementById("importToggle");
+  var importArrow = document.getElementById("importArrow");
+  var importBody = document.getElementById("importBody");
+  var importTextarea = document.getElementById("importTextarea");
+  var loadBtn = document.getElementById("loadBtn");
+  var resetBtn = document.getElementById("resetBtn");
+  var fileInput = document.getElementById("fileInput");
+  var fileUploadArea = document.getElementById("fileUploadArea");
+  var fileName = document.getElementById("fileName");
+  var parseFileBtn = document.getElementById("parseFileBtn");
+  var parseStatus = document.getElementById("parseStatus");
+  var resetBtn2 = document.getElementById("resetBtn2");
+  var importTabs = document.querySelectorAll(".import-tab");
+  var importTabContents = document.querySelectorAll(".import-tab-content");
+
+  // ==================== localStorage 读写 ====================
+
+  /** 从localStorage加载进度 */
+  function loadProgress() {
+    try {
+      var data = localStorage.getItem(STORAGE_KEY);
+      if (data) {
+        progress = JSON.parse(data);
+      } else {
+        progress = {};
+      }
+    } catch (e) {
+      progress = {};
+    }
+    // 确保每道题都有记录
+    for (var i = 0; i < questions.length; i++) {
+      var id = questions[i].id;
+      if (!progress[id]) {
+        progress[id] = { correct: 0, wrong: 0 };
+      }
+    }
+  }
+
+  /** 保存进度到localStorage */
+  function saveProgress() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+    } catch (e) {
+      // 静默处理存储异常
+    }
+  }
+
+  // ==================== 掌握度计算 ====================
+
+  /** 计算单道题的掌握度 (0~1) */
+  function getMastery(questionId) {
+    var p = progress[questionId];
+    if (!p || (p.correct + p.wrong === 0)) return 0;
+    return p.correct / (p.correct + p.wrong);
+  }
+
+  /** 计算某知识点的整体掌握度百分比 (0~100整数) */
+  function getKPMastery(kpName) {
+    var kpQuestions = questions.filter(function(q) { return q.knowledgePoint === kpName; });
+    if (kpQuestions.length === 0) return 0;
+    var total = 0;
+    for (var i = 0; i < kpQuestions.length; i++) {
+      total += getMastery(kpQuestions[i].id);
+    }
+    return Math.round((total / kpQuestions.length) * 100);
+  }
+
+  // ==================== 知识点提取 ====================
+
+  /** 从题库中提取唯一知识点列表 */
+  function extractKnowledgePoints() {
+    var set = {};
+    knowledgePoints = [];
+    for (var i = 0; i < questions.length; i++) {
+      var kp = questions[i].knowledgePoint;
+      if (!set[kp]) {
+        set[kp] = true;
+        knowledgePoints.push(kp);
+      }
+    }
+  }
+
+  // ==================== 大纲渲染 ====================
+
+  /** 渲染知识点大纲列表 */
+  function renderOutline() {
+    kpListEl.innerHTML = "";
+
+    if (questions.length === 0) {
+      kpListEl.innerHTML = '<li style="color:#999;padding:0.5rem;">题库为空</li>';
+      return;
+    }
+
+    // "全部知识点"条目
+    var allItem = document.createElement("li");
+    allItem.className = "kp-item" + (currentKP === null ? " active" : "");
+    var allCount = questions.length;
+    var allMastery = allCount > 0 ? Math.round(questions.reduce(function(s, q) { return s + getMastery(q.id); }, 0) / allCount * 100) : 0;
+    allItem.innerHTML =
+      '<div class="kp-name">全部知识点</div>' +
+      '<div class="kp-meta">' + allCount + '题 · 掌握 ' + allMastery + '%</div>' +
+      '<div class="kp-progress-bar"><div class="kp-progress-fill" style="width:' + allMastery + '%"></div></div>';
+    allItem.addEventListener("click", function() { selectKP(null); });
+    kpListEl.appendChild(allItem);
+
+    // 各知识点条目
+    for (var i = 0; i < knowledgePoints.length; i++) {
+      (function(kp) {
+        var count = questions.filter(function(q) { return q.knowledgePoint === kp; }).length;
+        var mastery = getKPMastery(kp);
+        var li = document.createElement("li");
+        li.className = "kp-item" + (currentKP === kp ? " active" : "");
+        li.innerHTML =
+          '<div class="kp-name">' + escapeHtml(kp) + '</div>' +
+          '<div class="kp-meta">' + count + '题 · 掌握 ' + mastery + '%</div>' +
+          '<div class="kp-progress-bar"><div class="kp-progress-fill" style="width:' + mastery + '%"></div></div>';
+        li.addEventListener("click", function() { selectKP(kp); });
+        kpListEl.appendChild(li);
+      })(knowledgePoints[i]);
+    }
+  }
+
+  // ==================== 练习区核心逻辑 ====================
+
+  /** 选择知识点并刷新练习区 */
+  function selectKP(kp) {
+    currentKP = kp;
+    currentIndex = 0;
+    cycleNotice.classList.remove("show");
+    buildSortedList();
+    renderOutline();
+    renderQuestion();
+  }
+
+  /** 构建按掌握度升序排列的题目列表（相同掌握度随机排序） */
+  function buildSortedList() {
+    var filtered;
+    if (currentKP === null) {
+      filtered = questions.slice();
+    } else {
+      filtered = questions.filter(function(q) { return q.knowledgePoint === currentKP; });
+    }
+
+    // 随机打乱，然后按掌握度升序稳定排序
+    shuffle(filtered);
+    filtered.sort(function(a, b) {
+      return getMastery(a.id) - getMastery(b.id);
+    });
+
+    currentList = filtered;
+  }
+
+  /** Fisher-Yates洗牌（原地修改） */
+  function shuffle(arr) {
+    for (var i = arr.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+  }
+
+  /** 渲染当前题目 */
+  function renderQuestion() {
+    if (currentList.length === 0) {
+      practiceContent.style.display = "none";
+      emptyState.style.display = "block";
+      emptyState.textContent = "当前范围内没有题目";
+      return;
+    }
+
+    practiceContent.style.display = "block";
+    emptyState.style.display = "none";
+
+    var q = currentList[currentIndex];
+    practiceTitle.textContent = "当前练习：" + (currentKP === null ? "全部知识点" : escapeHtml(currentKP));
+    practiceCounter.textContent = "第" + (currentIndex + 1) + "题 / 共" + currentList.length + "题";
+
+    questionText.textContent = q.question;
+
+    // 渲染选项
+    optionsList.innerHTML = "";
+    selectedOption = -1;
+    submitted = false;
+    var labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    for (var i = 0; i < q.options.length; i++) {
+      (function(idx) {
+        var li = document.createElement("li");
+        li.className = "option-item";
+        li.innerHTML =
+          '<input type="radio" name="option" value="' + idx + '" id="opt' + idx + '">' +
+          '<span class="option-label">' + labels[idx] + '.</span> ' +
+          '<span>' + escapeHtml(q.options[idx]) + '</span>';
+        li.addEventListener("click", function() {
+          if (submitted) return;
+          selectedOption = idx;
+          document.getElementById("opt" + idx).checked = true;
+          submitBtn.disabled = false;
+          // 移除其他选中样式
+          var items = optionsList.querySelectorAll(".option-item");
+          for (var j = 0; j < items.length; j++) {
+            items[j].style.borderColor = (j === idx) ? "#4a90d9" : "#ddd";
+          }
+        });
+        optionsList.appendChild(li);
+      })(i);
+    }
+
+    // 重置按钮和解释框
+    submitBtn.disabled = true;
+    submitBtn.style.display = "inline-block";
+    nextBtn.style.display = "none";
+    explanationBox.classList.remove("show", "correct", "wrong");
+    explanationBox.textContent = "";
+  }
+
+  /** 提交答案 */
+  function handleSubmit() {
+    if (submitted || selectedOption < 0) return;
+    submitted = true;
+
+    var q = currentList[currentIndex];
+    var isCorrect = selectedOption === q.correct;
+
+    // 更新进度
+    if (!progress[q.id]) {
+      progress[q.id] = { correct: 0, wrong: 0 };
+    }
+    if (isCorrect) {
+      progress[q.id].correct++;
+    } else {
+      progress[q.id].wrong++;
+    }
+    saveProgress();
+
+    // 高亮选项
+    var items = optionsList.querySelectorAll(".option-item");
+    for (var i = 0; i < items.length; i++) {
+      items[i].classList.add("disabled");
+      items[i].querySelector("input").disabled = true;
+      if (i === q.correct) {
+        items[i].classList.add("correct-answer");
+      }
+      if (i === selectedOption && !isCorrect) {
+        items[i].classList.add("wrong-answer");
+      }
+    }
+
+    // 显示解释
+    explanationBox.textContent = (isCorrect ? "✅ 回答正确！" : "❌ 回答错误。") + " " + q.explanation;
+    explanationBox.classList.add("show", isCorrect ? "correct" : "wrong");
+
+    // 按钮状态
+    submitBtn.disabled = true;
+    nextBtn.style.display = "inline-block";
+
+    // 刷新大纲（更新掌握度）
+    renderOutline();
+  }
+
+  /** 下一题 */
+  function handleNext() {
+    cycleNotice.classList.remove("show");
+    currentIndex++;
+    if (currentIndex >= currentList.length) {
+      currentIndex = 0;
+      // 循环时重新排序
+      buildSortedList();
+      cycleNotice.classList.add("show");
+    }
+    renderQuestion();
+  }
+
+  // ==================== 导入题库 ====================
+
+  /** 验证并加载用户JSON题库 */
+  function handleLoadQuestionBank() {
+    var text = importTextarea.value.trim();
+    if (!text) {
+      alert("请粘贴题库JSON数据。");
+      return;
+    }
+
+    var parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      alert("JSON格式错误：" + e.message);
+      return;
+    }
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      alert("题库必须是非空的JSON数组。");
+      return;
+    }
+
+    // 基本格式校验
+    for (var i = 0; i < parsed.length; i++) {
+      var q = parsed[i];
+      if (!q.id || !q.knowledgePoint || !q.question || !Array.isArray(q.options) || q.options.length === 0 || typeof q.correct !== "number") {
+        alert("第" + (i + 1) + "道题格式不正确，请检查必需字段：id, knowledgePoint, question, options（非空数组）, correct。");
+        return;
+      }
+      if (q.correct < 0 || q.correct >= q.options.length) {
+        alert("第" + (i + 1) + "道题的correct索引超出options范围。");
+        return;
+      }
+      if (typeof q.explanation !== "string") {
+        alert("第" + (i + 1) + "道题缺少explanation字段。");
+        return;
+      }
+    }
+
+    // 替换题库并重置进度
+    questions = parsed;
+    progress = {};
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) { /* 静默处理 */ }
+    initializeApp();
+    alert("题库加载成功！已重置所有学习进度。");
+  }
+
+  /** 重置学习进度 */
+  function handleReset() {
+    if (!confirm("确认重置所有学习进度？此操作不可撤销。")) return;
+    progress = {};
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) { /* 静默处理 */ }
+    loadProgress();
+    currentIndex = 0;
+    cycleNotice.classList.remove("show");
+    buildSortedList();
+    renderOutline();
+    renderQuestion();
+  }
+
+  // ==================== 文件导入（Word/PDF） ====================
+
+  var pendingFile = null;
+
+  /** 显示解析状态消息 */
+  function showParseStatus(msg, type) {
+    parseStatus.textContent = msg;
+    parseStatus.className = "parse-status show " + type;
+  }
+
+  /** 隐藏解析状态消息 */
+  function hideParseStatus() {
+    parseStatus.className = "parse-status";
+  }
+
+  /**
+   * 将结构化文本解析为题库数组
+   * 支持格式：
+   *   知识点：xxx
+   *   题目：xxx
+   *   A. xxx
+   *   B. xxx
+   *   答案：B
+   *   解析：xxx
+   */
+  function parseTextToQuestions(text) {
+    var blocks = text.split(/\n\s*\n/);
+    var result = [];
+    var questionId = 1;
+
+    for (var b = 0; b < blocks.length; b++) {
+      var block = blocks[b].trim();
+      if (!block) continue;
+
+      var lines = block.split(/\n/);
+      var knowledgePoint = "";
+      var questionStr = "";
+      var options = [];
+      var answerLetter = "";
+      var explanation = "";
+
+      for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+
+        if (/^知识点[：:]/.test(line)) {
+          knowledgePoint = line.replace(/^知识点[：:]\s*/, "");
+        } else if (/^题目[：:]/.test(line)) {
+          questionStr = line.replace(/^题目[：:]\s*/, "");
+        } else if (/^[A-Za-z][.．、)）]\s*/.test(line)) {
+          options.push(line.replace(/^[A-Za-z][.．、)）]\s*/, ""));
+        } else if (/^答案[：:]/.test(line)) {
+          answerLetter = line.replace(/^答案[：:]\s*/, "").trim().toUpperCase();
+        } else if (/^解析[：:]/.test(line)) {
+          explanation = line.replace(/^解析[：:]\s*/, "");
+        }
+      }
+
+      // 跳过不完整的块
+      if (!questionStr || options.length < 2 || !answerLetter) continue;
+
+      // 将答案字母转换为索引
+      var correctIndex = answerLetter.charCodeAt(0) - "A".charCodeAt(0);
+      if (correctIndex < 0 || correctIndex >= options.length) continue;
+
+      result.push({
+        id: "file_q" + questionId,
+        knowledgePoint: knowledgePoint || "未分类",
+        question: questionStr,
+        options: options,
+        correct: correctIndex,
+        explanation: explanation || "无解析"
+      });
+      questionId++;
+    }
+
+    return result;
+  }
+
+  /** 从DOCX文件提取文本 */
+  function extractTextFromDocx(file, callback) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var arrayBuffer = e.target.result;
+      if (typeof mammoth === "undefined") {
+        callback("mammoth.js库加载失败，请检查网络连接后刷新页面。", null);
+        return;
+      }
+      mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+        .then(function(result) {
+          callback(null, result.value);
+        })
+        .catch(function(err) {
+          callback("Word文件解析失败：" + err.message, null);
+        });
+    };
+    reader.onerror = function() {
+      callback("文件读取失败，请重试。", null);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  /** 从PDF文件提取文本 */
+  function extractTextFromPdf(file, callback) {
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      var typedArray = new Uint8Array(e.target.result);
+      if (typeof pdfjsLib === "undefined") {
+        callback("pdf.js库加载失败，请检查网络连接后刷新页面。", null);
+        return;
+      }
+      pdfjsLib.getDocument({ data: typedArray }).promise
+        .then(function(pdf) {
+          var numPages = pdf.numPages;
+          var textParts = [];
+          var processed = 0;
+
+          function processPage(pageNum) {
+            pdf.getPage(pageNum).then(function(page) {
+              page.getTextContent().then(function(content) {
+                var pageText = content.items.map(function(item) {
+                  return item.str;
+                }).join(" ");
+                textParts[pageNum - 1] = pageText;
+                processed++;
+                if (processed === numPages) {
+                  callback(null, textParts.join("\n\n"));
+                }
+              });
+            });
+          }
+
+          if (numPages === 0) {
+            callback("PDF文件为空。", null);
+            return;
+          }
+
+          for (var p = 1; p <= numPages; p++) {
+            processPage(p);
+          }
+        })
+        .catch(function(err) {
+          callback("PDF文件解析失败：" + err.message, null);
+        });
+    };
+    reader.onerror = function() {
+      callback("文件读取失败，请重试。", null);
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  /** 处理文件选择 */
+  function handleFileSelect(file) {
+    if (!file) return;
+    var ext = file.name.split(".").pop().toLowerCase();
+    if (ext !== "docx" && ext !== "pdf") {
+      alert("仅支持 .docx 和 .pdf 格式的文件。");
+      return;
+    }
+    pendingFile = file;
+    fileName.textContent = "已选择：" + file.name;
+    parseFileBtn.disabled = false;
+    hideParseStatus();
+  }
+
+  /** 解析并导入文件 */
+  function handleParseFile() {
+    if (!pendingFile) {
+      alert("请先选择文件。");
+      return;
+    }
+
+    var ext = pendingFile.name.split(".").pop().toLowerCase();
+    showParseStatus("正在解析文件…", "loading");
+    parseFileBtn.disabled = true;
+
+    var extractFn = ext === "docx" ? extractTextFromDocx : extractTextFromPdf;
+
+    extractFn(pendingFile, function(err, text) {
+      if (err) {
+        showParseStatus(err, "error");
+        parseFileBtn.disabled = false;
+        return;
+      }
+
+      var parsed = parseTextToQuestions(text);
+
+      if (parsed.length === 0) {
+        showParseStatus("未能从文件中识别出有效题目，请检查文件格式是否符合要求。", "error");
+        parseFileBtn.disabled = false;
+        return;
+      }
+
+      // 替换题库并重置进度
+      questions = parsed;
+      progress = {};
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) { /* 静默处理 */ }
+      initializeApp();
+      showParseStatus("成功导入 " + parsed.length + " 道题目！已重置所有学习进度。", "success");
+      parseFileBtn.disabled = false;
+    });
+  }
+
+  // ==================== 工具函数 ====================
+
+  /** HTML转义防止XSS */
+  var escapeEl = document.createElement("div");
+  function escapeHtml(str) {
+    escapeEl.textContent = str;
+    return escapeEl.innerHTML;
+  }
+
+  // ==================== 初始化 ====================
+
+  /** 初始化/重置应用状态 */
+  function initializeApp() {
+    loadProgress();
+    extractKnowledgePoints();
+    currentKP = null;
+    currentIndex = 0;
+    cycleNotice.classList.remove("show");
+    buildSortedList();
+    renderOutline();
+
+    if (questions.length > 0) {
+      renderQuestion();
+    } else {
+      practiceContent.style.display = "none";
+      emptyState.style.display = "block";
+      emptyState.textContent = "题库为空，请导入题库开始学习。";
+    }
+  }
+
+  // ==================== 事件绑定 ====================
+
+  submitBtn.addEventListener("click", handleSubmit);
+  nextBtn.addEventListener("click", handleNext);
+  loadBtn.addEventListener("click", handleLoadQuestionBank);
+  resetBtn.addEventListener("click", handleReset);
+  resetBtn2.addEventListener("click", handleReset);
+
+  importToggle.addEventListener("click", function() {
+    var isOpen = importBody.classList.toggle("show");
+    importArrow.classList.toggle("open", isOpen);
+  });
+
+  // 导入方式标签切换
+  for (var t = 0; t < importTabs.length; t++) {
+    importTabs[t].addEventListener("click", function() {
+      var tabName = this.getAttribute("data-tab");
+      for (var j = 0; j < importTabs.length; j++) {
+        importTabs[j].classList.remove("active");
+      }
+      this.classList.add("active");
+      for (var k = 0; k < importTabContents.length; k++) {
+        importTabContents[k].classList.remove("active");
+      }
+      document.getElementById("tab" + tabName.charAt(0).toUpperCase() + tabName.slice(1)).classList.add("active");
+    });
+  }
+
+  // 文件上传相关事件
+  fileUploadArea.addEventListener("click", function() {
+    fileInput.click();
+  });
+
+  fileInput.addEventListener("change", function() {
+    if (fileInput.files.length > 0) {
+      handleFileSelect(fileInput.files[0]);
+    }
+  });
+
+  fileUploadArea.addEventListener("dragover", function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    fileUploadArea.classList.add("dragover");
+  });
+
+  fileUploadArea.addEventListener("dragleave", function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    fileUploadArea.classList.remove("dragover");
+  });
+
+  fileUploadArea.addEventListener("drop", function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    fileUploadArea.classList.remove("dragover");
+    if (e.dataTransfer.files.length > 0) {
+      handleFileSelect(e.dataTransfer.files[0]);
+    }
+  });
+
+  parseFileBtn.addEventListener("click", handleParseFile);
+
+  // ==================== 启动 ====================
+  questions = DEFAULT_QUESTIONS.slice();
+  initializeApp();
+
+})();
+</script>
+</body>
+</html>
