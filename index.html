@@ -847,6 +847,8 @@ D. 1952年
    *   解析：xxx
    */
   function parseTextToQuestions(text) {
+    // 统一换行符为LF
+    text = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     var blocks = text.split(/\n\s*\n/);
     var result = [];
     var questionId = 1;
@@ -943,7 +945,7 @@ D. 1952年
               page.getTextContent().then(function(content) {
                 var pageText = content.items.map(function(item) {
                   return item.str;
-                }).join(" ");
+                }).join("\n");
                 textParts[pageNum - 1] = pageText;
                 processed++;
                 if (processed === numPages) {
