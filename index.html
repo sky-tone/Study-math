@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>基于题库的学习助手</title>
+  <!--
+    使用说明：
+    1. 直接在浏览器中打开此文件即可使用。
+    2. 左侧大纲区点击知识点可筛选练习范围。
+    3. 选择选项后点击"提交答案"，查看解析；再点击"下一题"继续。
+    4. 底部"导入题库"区域可粘贴自定义 JSON 题库并加载。
+    5. "重置学习进度"按钮清空本地存储的答题记录。
+  -->
+  <style>
+    /* ===== 全局重置与基础样式 ===== */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f0f4f8;
+      color: #2d3748;
+      min-height: 100vh;
+    }
+
+    /* ===== 顶部标题栏 ===== */
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 20px 24px;
+      text-align: center;
+    }
+    header h1 { font-size: 1.6rem; margin-bottom: 6px; }
+    header p  { font-size: 0.9rem; opacity: 0.88; }
+
+    /* ===== 主布局 ===== */
+    .main-layout {
+      display: flex;
+      gap: 20px;
+      max-width: 1100px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+
+    /* ===== 左侧大纲 ===== */
+    .sidebar {
+      flex: 0 0 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sidebar-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      padding: 16px;
+    }
+
+    .sidebar-card h2 {
+      font-size: 1rem;
+      color: #4a5568;
+      margin-bottom: 12px;
+      border-bottom: 2px solid #e2e8f0;
+      padding-bottom: 8px;
+    }
+
+    .outline-list { list-style: none; }
+
+    .outline-item {
+      cursor: pointer;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      transition: background .15s;
+      border: 2px solid transparent;
+    }
+    .outline-item:hover { background: #edf2ff; }
+    .outline-item.active {
+      background: #ebf4ff;
+      border-color: #667eea;
+    }
+
+    .outline-item .kp-name {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #2d3748;
+    }
+    .outline-item .kp-meta {
+      font-size: 0.8rem;
+      color: #718096;
+      margin-top: 4px;
+    }
+
+    /* 进度条 */
+    .progress-bar-wrap {
+      background: #e2e8f0;
+      border-radius: 999px;
+      height: 6px;
+      margin-top: 6px;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      transition: width .3s;
+    }
+
+    /* ===== 右侧练习区 ===== */
+    .content { flex: 1; min-width: 0; }
+
+    .practice-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      padding: 24px;
+    }
+
+    .practice-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .practice-scope {
+      font-size: 0.85rem;
+      color: #667eea;
+      font-weight: 600;
+      background: #edf2ff;
+      padding: 4px 10px;
+      border-radius: 999px;
+    }
+
+    .practice-progress {
+      font-size: 0.85rem;
+      color: #718096;
+    }
+
+    /* 题目 */
+    .question-text {
+      font-size: 1.1rem;
+      font-weight: 600;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      color: #1a202c;
+    }
+
+    /* 选项 */
+    .options-list { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+
+    .option-item label {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .option-item label:hover { border-color: #667eea; background: #f7f8ff; }
+
+    .option-letter {
+      flex-shrink: 0;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      background: #e2e8f0;
+      color: #4a5568;
+      font-weight: 700;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* 选中状态 */
+    .option-item input[type="radio"]:checked + label {
+      border-color: #667eea;
+      background: #edf2ff;
+    }
+    .option-item input[type="radio"]:checked + label .option-letter {
+      background: #667eea;
+      color: #fff;
+    }
+
+    /* 正确 / 错误高亮 */
+    .option-item label.correct {
+      border-color: #38a169 !important;
+      background: #f0fff4 !important;
+    }
+    .option-item label.correct .option-letter { background: #38a169; color: #fff; }
+
+    .option-item label.wrong {
+      border-color: #e53e3e !important;
+      background: #fff5f5 !important;
+    }
+    .option-item label.wrong .option-letter { background: #e53e3e; color: #fff; }
+
+    /* 禁用状态 */
+    .option-item input[type="radio"]:disabled + label {
+      cursor: not-allowed;
+      opacity: 0.8;
+    }
+
+    /* 隐藏原生 radio */
+    .option-item input[type="radio"] { display: none; }
+
+    /* 解析区 */
+    .explanation-box {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border-radius: 8px;
+      background: #fffbeb;
+      border-left: 4px solid #f6ad55;
+      font-size: 0.9rem;
+      color: #744210;
+      display: none;
+    }
+    .explanation-box .verdict {
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .verdict.correct-v { color: #276749; }
+    .verdict.wrong-v   { color: #c53030; }
+
+    /* 按钮区 */
+    .btn-row {
+      margin-top: 22px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      padding: 10px 22px;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+    .btn-primary { background: #667eea; color: #fff; }
+    .btn-primary:not(:disabled):hover { background: #5a6fd6; }
+
+    .btn-secondary { background: #e2e8f0; color: #4a5568; }
+    .btn-secondary:not(:disabled):hover { background: #cbd5e0; }
+
+    .btn-danger { background: #fc8181; color: #fff; }
+    .btn-danger:not(:disabled):hover { background: #f56565; }
+
+    /* 完成一轮提示 */
+    .cycle-notice {
+      display: none;
+      margin-top: 10px;
+      font-size: 0.85rem;
+      color: #805ad5;
+      font-style: italic;
+    }
+
+    /* 空状态 */
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: #a0aec0;
+    }
+    .empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+
+    /* ===== 底部工具区 ===== */
+    .footer-area {
+      max-width: 1100px;
+      margin: 0 auto 40px;
+      padding: 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* 折叠式导入区 */
+    .import-section {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.08);
+      overflow: hidden;
+    }
+
+    .import-toggle {
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 14px 20px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #4a5568;
+      cursor: pointer;
+      text-align: left;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .import-toggle:hover { background: #f7fafc; }
+    .import-toggle .arrow { transition: transform .2s; font-size: 0.8rem; }
+    .import-toggle.open .arrow { transform: rotate(180deg); }
+
+    .import-body {
+      display: none;
+      padding: 0 20px 20px;
+    }
+    .import-body.open { display: block; }
+
+    .import-body p {
+      font-size: 0.85rem;
+      color: #718096;
+      margin-bottom: 10px;
+    }
+
+    .import-body textarea {
+      width: 100%;
+      min-height: 120px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.82rem;
+      font-family: monospace;
+      resize: vertical;
+      outline: none;
+      transition: border-color .15s;
+    }
+    .import-body textarea:focus { border-color: #667eea; }
+
+    /* 重置按钮行 */
+    .reset-row {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* ===== 响应式 ===== */
+    @media (max-width: 700px) {
+      .main-layout { flex-direction: column; }
+      .sidebar { flex: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📚 基于题库的学习助手</h1>
+  <p>从题库中提炼知识点，按掌握程度智能排题，帮助您逐步掌握每个知识点</p>
+</header>
+
+<div class="main-layout">
+  <!-- 左侧知识点大纲 -->
+  <aside class="sidebar">
+    <div class="sidebar-card">
+      <h2>📋 知识点大纲</h2>
+      <ul class="outline-list" id="outlineList">
+        <!-- 由 JS 动态生成 -->
+      </ul>
+    </div>
+  </aside>
+
+  <!-- 右侧练习卡片 -->
+  <main class="content">
+    <div class="practice-card">
+      <div class="practice-header">
+        <span class="practice-scope" id="practiceScope">全部知识点</span>
+        <span class="practice-progress" id="practiceProgress">第 - 题 / 共 - 题</span>
+      </div>
+
+      <div id="practiceBody">
+        <!-- 由 JS 动态渲染 -->
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 底部工具区 -->
+<div class="footer-area">
+
+  <!-- 导入题库 -->
+  <div class="import-section">
+    <button class="import-toggle" id="importToggle" onclick="toggleImport()">
+      📥 导入自定义题库
+      <span class="arrow">▼</span>
+    </button>
+    <div class="import-body" id="importBody">
+      <p>请粘贴符合格式的 JSON 数组（每个对象须含 id、knowledgePoint、question、options（字符串数组）、correct（从 0 开始的整数索引）、explanation 字段），点击"加载题库"后将替换当前题库并重置学习进度。</p>
+      <textarea id="importTextarea" placeholder='[{"id":"x1","knowledgePoint":"示例","question":"1+1=?","options":["1","2","3"],"correct":1,"explanation":"1+1=2"}]'></textarea>
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn btn-primary" onclick="loadCustomBank()">加载题库</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 重置进度 -->
+  <div class="reset-row">
+    <button class="btn btn-danger" onclick="resetProgress()">🗑 重置学习进度</button>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   全局数据结构
+   ============================================================ */
+
+/**
+ * 题库数组，每个元素格式：
+ * { id, knowledgePoint, question, options[], correct, explanation }
+ */
+let questionBank = [
+  // ----- 数学 -----
+  {
+    id: "m1",
+    knowledgePoint: "数学",
+    question: "计算：15 × 8 = ?",
+    options: ["100", "110", "120", "130"],
+    correct: 2,
+    explanation: "15 × 8 = 120，即 10×8 + 5×8 = 80 + 40 = 120。"
+  },
+  {
+    id: "m2",
+    knowledgePoint: "数学",
+    question: "下列哪个数是质数？",
+    options: ["9", "15", "17", "21"],
+    correct: 2,
+    explanation: "17 只能被 1 和 17 整除，是质数；其余均为合数。"
+  },
+  {
+    id: "m3",
+    knowledgePoint: "数学",
+    question: "一个正方形边长为 5，其面积是多少？",
+    options: ["20", "25", "30", "10"],
+    correct: 1,
+    explanation: "正方形面积 = 边长² = 5² = 25。"
+  },
+  {
+    id: "m4",
+    knowledgePoint: "数学",
+    question: "√144 = ?",
+    options: ["10", "11", "12", "13"],
+    correct: 2,
+    explanation: "12 × 12 = 144，所以 √144 = 12。"
+  },
+  {
+    id: "m5",
+    knowledgePoint: "数学",
+    question: "0.75 等于哪个分数？",
+    options: ["1/2", "2/3", "3/4", "4/5"],
+    correct: 2,
+    explanation: "0.75 = 75/100 = 3/4。"
+  },
+  // ----- 历史 -----
+  {
+    id: "h1",
+    knowledgePoint: "历史",
+    question: "中国历史上第一个统一的多民族封建国家是？",
+    options: ["夏朝", "商朝", "秦朝", "汉朝"],
+    correct: 2,
+    explanation: "公元前 221 年，秦始皇完成统一，建立秦朝，是中国第一个统一的多民族封建中央集权国家。"
+  },
+  {
+    id: "h2",
+    knowledgePoint: "历史",
+    question: "丝绸之路开辟于哪个朝代？",
+    options: ["秦朝", "汉朝", "唐朝", "宋朝"],
+    correct: 1,
+    explanation: "丝绸之路由汉武帝时期张骞出使西域时开辟，加强了中西方的经济文化交流。"
+  },
+  {
+    id: "h3",
+    knowledgePoint: "历史",
+    question: "下列哪位历史人物领导了辛亥革命？",
+    options: ["康有为", "梁启超", "孙中山", "袁世凯"],
+    correct: 2,
+    explanation: "孙中山是辛亥革命的领袖，推翻了清朝统治，建立了中华民国。"
+  },
+  {
+    id: "h4",
+    knowledgePoint: "历史",
+    question: "世界上第一次工业革命首先发生在哪个国家？",
+    options: ["法国", "德国", "美国", "英国"],
+    correct: 3,
+    explanation: "18 世纪中叶，工业革命首先在英国兴起，推动了蒸汽机的广泛使用。"
+  },
+  // ----- 地理 -----
+  {
+    id: "g1",
+    knowledgePoint: "地理",
+    question: "世界上面积最大的洲是哪个？",
+    options: ["非洲", "北美洲", "亚洲", "欧洲"],
+    correct: 2,
+    explanation: "亚洲面积约 4400 万平方千米，是世界上面积最大的洲。"
+  },
+  {
+    id: "g2",
+    knowledgePoint: "地理",
+    question: "尼罗河流经的国家中，哪个国家位于最下游？",
+    options: ["苏丹", "埃塞俄比亚", "乌干达", "埃及"],
+    correct: 3,
+    explanation: "尼罗河自南向北流入地中海，埃及位于最下游，尼罗河三角洲也在埃及境内。"
+  },
+  {
+    id: "g3",
+    knowledgePoint: "地理",
+    question: "下列哪座山是世界最高峰？",
+    options: ["乔戈里峰", "珠穆朗玛峰", "贡嘎山", "洛子峰"],
+    correct: 1,
+    explanation: "珠穆朗玛峰海拔约 8848.86 米，是世界最高峰，位于中尼边界。"
+  },
+  {
+    id: "g4",
+    knowledgePoint: "地理",
+    question: "下列哪个城市是巴西的首都？",
+    options: ["圣保罗", "里约热内卢", "巴西利亚", "萨尔瓦多"],
+    correct: 2,
+    explanation: "巴西利亚于 1960 年成为巴西首都，是一座专门规划建设的新城。"
+  }
+];
+
+/**
+ * 学习进度，格式：{ [questionId]: { correct: number, wrong: number } }
+ * 从 localStorage 加载，答题后实时更新保存
+ */
+let progress = {};
+
+/** 当前筛选的知识点，null 表示"全部" */
+let currentKP = null;
+
+/** 当前练习的题目列表（已按掌握度排序），以及当前索引 */
+let currentList = [];
+let currentIndex = 0;
+
+/** 标记当前题目是否已提交过答案 */
+let answered = false;
+
+/** 存储进度的 localStorage 键名 */
+const STORAGE_KEY = "learningProgress";
+
+/** 完成一轮后提示并自动跳转的延迟时间（毫秒），给用户留出阅读提示的时间 */
+const CYCLE_COMPLETE_DELAY_MS = 1400;
+
+/* ============================================================
+   LocalStorage 读写
+   ============================================================ */
+
+function loadProgress() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    progress = raw ? JSON.parse(raw) : {};
+  } catch (e) {
+    progress = {};
+  }
+}
+
+function saveProgress() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
+}
+
+/**
+ * 获取某题的正确/错误计数，若无记录则初始化
+ */
+function getRecord(id) {
+  if (!progress[id]) progress[id] = { correct: 0, wrong: 0 };
+  return progress[id];
+}
+
+/**
+ * 某题的掌握度（0~1），未作答为 0
+ */
+function getMastery(id) {
+  const rec = getRecord(id);
+  const total = rec.correct + rec.wrong;
+  return total === 0 ? 0 : rec.correct / total;
+}
+
+/* ============================================================
+   知识点工具函数
+   ============================================================ */
+
+/**
+ * 从当前题库提取所有唯一知识点，返回数组
+ */
+function getKnowledgePoints() {
+  return [...new Set(questionBank.map(q => q.knowledgePoint))];
+}
+
+/**
+ * 某知识点的整体掌握百分比（0~100 整数）
+ */
+function getKPMastery(kp) {
+  const qs = questionBank.filter(q => q.knowledgePoint === kp);
+  if (qs.length === 0) return 0;
+  const avg = qs.reduce((sum, q) => sum + getMastery(q.id), 0) / qs.length;
+  return Math.round(avg * 100);
+}
+
+/* ============================================================
+   题目排序：掌握度升序，同分随机
+   ============================================================ */
+
+function buildSortedList(kp) {
+  let pool = kp === null
+    ? [...questionBank]
+    : questionBank.filter(q => q.knowledgePoint === kp);
+
+  // 附加随机打散用的权重
+  pool = pool.map(q => ({ q, mastery: getMastery(q.id), rand: Math.random() }));
+  pool.sort((a, b) => a.mastery - b.mastery || a.rand - b.rand);
+  return pool.map(p => p.q);
+}
+
+/* ============================================================
+   渲染知识点大纲
+   ============================================================ */
+
+function renderOutline() {
+  const list = document.getElementById("outlineList");
+  const kps  = getKnowledgePoints();
+
+  // Use data-kp attribute; null is represented as empty string
+  let html = `
+    <li class="outline-item ${currentKP === null ? "active" : ""}"
+        data-kp="">
+      <div class="kp-name">全部知识点</div>
+      <div class="kp-meta">${questionBank.length} 题</div>
+    </li>`;
+
+  kps.forEach(kp => {
+    const count = questionBank.filter(q => q.knowledgePoint === kp).length;
+    const pct   = getKPMastery(kp);
+    html += `
+      <li class="outline-item ${currentKP === kp ? "active" : ""}"
+          data-kp="${escapeHtml(kp)}">
+        <div class="kp-name">${escapeHtml(kp)}</div>
+        <div class="kp-meta">${count} 题 &nbsp;|&nbsp; 掌握度 ${pct}%</div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill" style="width:${pct}%"></div>
+        </div>
+      </li>`;
+  });
+
+  list.innerHTML = html;
+
+  // Event delegation: one listener handles all outline item clicks safely
+  list.querySelectorAll(".outline-item").forEach(li => {
+    li.addEventListener("click", () => {
+      const kp = li.dataset.kp || null; // empty string → null (全部)
+      selectKP(kp);
+    });
+  });
+}
+
+/* ============================================================
+   练习区渲染
+   ============================================================ */
+
+function renderPractice() {
+  const scopeEl    = document.getElementById("practiceScope");
+  const progressEl = document.getElementById("practiceProgress");
+  const bodyEl     = document.getElementById("practiceBody");
+
+  scopeEl.textContent = currentKP === null ? "全部知识点" : `当前练习：${currentKP}`;
+
+  if (currentList.length === 0) {
+    progressEl.textContent = "暂无题目";
+    bodyEl.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">📭</div>
+        <div>当前范围内暂无题目</div>
+      </div>`;
+    return;
+  }
+
+  progressEl.textContent = `第 ${currentIndex + 1} 题 / 共 ${currentList.length} 题`;
+
+  const q      = currentList[currentIndex];
+  const record = getRecord(q.id);
+  const letters = ["A", "B", "C", "D", "E", "F"];
+
+  let optionsHtml = q.options.map((opt, i) => `
+    <li class="option-item">
+      <input type="radio" name="opt" id="opt${i}" value="${i}" />
+      <label for="opt${i}">
+        <span class="option-letter">${letters[i] || i}</span>
+        <span>${escapeHtml(opt)}</span>
+      </label>
+    </li>`).join("");
+
+  bodyEl.innerHTML = `
+    <div class="question-text">${escapeHtml(q.question)}</div>
+    <ul class="options-list">${optionsHtml}</ul>
+    <div class="explanation-box" id="explanationBox">
+      <div class="verdict" id="verdictText"></div>
+      <div id="explanationText"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="submitBtn">提交答案</button>
+      <button class="btn btn-secondary" id="nextBtn" style="display:none">下一题 →</button>
+    </div>
+    <div class="cycle-notice" id="cycleNotice">✅ 本轮已全部练习完毕，即将从头开始！</div>`;
+
+  // Attach event listeners instead of inline onclick to avoid injection risks
+  document.getElementById("submitBtn").addEventListener("click", submitAnswer);
+  document.getElementById("nextBtn").addEventListener("click", nextQuestion);
+
+  answered = false;
+}
+
+/* ============================================================
+   答题逻辑
+   ============================================================ */
+
+function submitAnswer() {
+  if (answered) return;
+
+  const selected = document.querySelector('input[name="opt"]:checked');
+  if (!selected) {
+    alert("请先选择一个选项！");
+    return;
+  }
+
+  answered = true;
+
+  const q         = currentList[currentIndex];
+  const chosen    = parseInt(selected.value);
+  const isCorrect = chosen === q.correct;
+
+  // 更新进度
+  const rec = getRecord(q.id);
+  if (isCorrect) rec.correct++; else rec.wrong++;
+  saveProgress();
+
+  // 高亮选项
+  const labels = document.querySelectorAll('.option-item label');
+  labels.forEach((lbl, i) => {
+    if (i === q.correct) lbl.classList.add("correct");
+    else if (i === chosen && !isCorrect) lbl.classList.add("wrong");
+  });
+
+  // 禁用所有 radio 和提交按钮
+  document.querySelectorAll('input[name="opt"]').forEach(r => r.disabled = true);
+  document.getElementById("submitBtn").disabled = true;
+
+  // 显示解析
+  const box         = document.getElementById("explanationBox");
+  const verdictEl   = document.getElementById("verdictText");
+  const explainEl   = document.getElementById("explanationText");
+
+  box.style.display        = "block";
+  verdictEl.textContent    = isCorrect ? "✅ 回答正确！" : "❌ 回答错误";
+  verdictEl.className      = "verdict " + (isCorrect ? "correct-v" : "wrong-v");
+  explainEl.textContent    = q.explanation;
+
+  // 显示"下一题"
+  document.getElementById("nextBtn").style.display = "inline-block";
+
+  // 刷新大纲掌握度（不重置题目列表）
+  renderOutline();
+}
+
+/* ============================================================
+   下一题逻辑
+   ============================================================ */
+
+function nextQuestion() {
+  currentIndex++;
+  const cycleNotice = document.getElementById("cycleNotice");
+
+  if (currentIndex >= currentList.length) {
+    // 已循环：重新排序并从头开始
+    cycleNotice.style.display = "block";
+    setTimeout(() => {
+      currentList  = buildSortedList(currentKP);
+      currentIndex = 0;
+      renderPractice();
+    }, CYCLE_COMPLETE_DELAY_MS);
+    return;
+  }
+
+  renderPractice();
+}
+
+/* ============================================================
+   切换知识点
+   ============================================================ */
+
+function selectKP(kp) {
+  currentKP    = kp;
+  currentList  = buildSortedList(kp);
+  currentIndex = 0;
+  renderOutline();
+  renderPractice();
+}
+
+/* ============================================================
+   导入自定义题库
+   ============================================================ */
+
+function toggleImport() {
+  const toggle = document.getElementById("importToggle");
+  const body   = document.getElementById("importBody");
+  toggle.classList.toggle("open");
+  body.classList.toggle("open");
+}
+
+function loadCustomBank() {
+  const raw = document.getElementById("importTextarea").value.trim();
+  if (!raw) { alert("请先粘贴题库 JSON 数据！"); return; }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    // Log technical details to console; show user-friendly message in UI
+    console.error("题库 JSON 解析失败：", e);
+    alert("题库格式有误，请检查 JSON 语法是否正确。");
+    return;
+  }
+
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    alert("题库应为非空 JSON 数组！");
+    return;
+  }
+
+  // 校验每题的字段存在性、类型及取值范围
+  const required = ["id", "knowledgePoint", "question", "options", "correct", "explanation"];
+  for (let i = 0; i < parsed.length; i++) {
+    const q = parsed[i];
+    // 字段存在
+    const missing = required.filter(f => !(f in q));
+    if (missing.length) {
+      alert(`第 ${i + 1} 条题目缺少字段：${missing.join("、")}`);
+      return;
+    }
+    // options 须为非空数组
+    if (!Array.isArray(q.options) || q.options.length === 0) {
+      alert(`第 ${i + 1} 条题目的 options 须为非空数组。`);
+      return;
+    }
+    // correct 须为合法索引（整数且在 options 范围内）
+    if (
+      typeof q.correct !== "number" ||
+      !Number.isInteger(q.correct) ||
+      q.correct < 0 ||
+      q.correct >= q.options.length
+    ) {
+      alert(`第 ${i + 1} 条题目的 correct 须为 options 数组的合法索引（0 ~ ${q.options.length - 1}）。`);
+      return;
+    }
+  }
+
+  // 替换题库，清空进度
+  questionBank = parsed;
+  localStorage.removeItem(STORAGE_KEY);
+  progress = {};
+
+  // 重置状态
+  currentKP    = null;
+  currentList  = buildSortedList(null);
+  currentIndex = 0;
+
+  renderOutline();
+  renderPractice();
+  alert("题库加载成功！共 " + parsed.length + " 道题。");
+}
+
+/* ============================================================
+   重置学习进度
+   ============================================================ */
+
+function resetProgress() {
+  if (!confirm("确定要清空所有学习进度吗？此操作不可撤销。")) return;
+  localStorage.removeItem(STORAGE_KEY);
+  progress = {};
+
+  // 重新排序（掌握度归零后随机）
+  currentList  = buildSortedList(currentKP);
+  currentIndex = 0;
+
+  renderOutline();
+  renderPractice();
+}
+
+/* ============================================================
+   HTML 转义工具
+   ============================================================ */
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/* ============================================================
+   初始化
+   ============================================================ */
+
+(function init() {
+  loadProgress();
+  currentList  = buildSortedList(null);
+  currentIndex = 0;
+  renderOutline();
+  renderPractice();
+})();
+</script>
+</body>
+</html>
