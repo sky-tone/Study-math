@@ -4,9 +4,56 @@
 
 ---
 
-## 🚀 快速开始
+## 🚀 如何运行
 
-直接用浏览器打开 `index.html` 即可，无需安装任何依赖。
+本项目是纯静态网页，**无需服务器、无需安装依赖**。共有三种运行方式，根据你的场景选择其中一种即可：
+
+---
+
+### 方式一：云端自动部署（推荐，零本地配置）
+
+本仓库已配置 **GitHub Actions 自动部署**。只要你将代码推送到 `main` 分支，GitHub 会自动将最新版本发布到 **GitHub Pages**，全程无需手动操作。
+
+**开启步骤（仅需一次）：**
+
+1. 进入你的 GitHub 仓库页面
+2. 点击顶部菜单 **Settings（设置）**
+3. 左侧找到 **Pages** 选项
+4. 在 **Build and deployment → Source** 下拉菜单中选择 **GitHub Actions**
+5. 保存后，下次推送代码时即自动部署
+
+部署完成后，访问地址为：
+
+```
+https://<你的用户名>.github.io/<仓库名>/
+```
+
+> 例如：`https://sky-tone.github.io/Study-math/`
+
+之后每次修改 `index.html` 并推送到 `main`，网站会在约 1 分钟内自动更新，**无需手动操作**。
+
+---
+
+### 方式二：本地直接打开（最简单）
+
+**不需要任何编辑器或工具**，只需：
+
+1. 将仓库下载到本地（或 `git clone`）
+2. 双击 `index.html` 文件，用浏览器打开即可
+
+进度数据保存在浏览器的 `localStorage` 中，刷新不会丢失。
+
+---
+
+### 方式三：VS Code + 实时预览（推荐用于开发修改）
+
+如果你想修改代码（如添加自己的题库、调整样式），推荐使用 VS Code：
+
+1. 安装 [VS Code](https://code.visualstudio.com/)
+2. 在 VS Code 扩展商店搜索并安装 **Live Server**（作者 Ritwick Dey）
+3. 用 VS Code 打开项目文件夹
+4. 右键点击 `index.html` → 选择 **Open with Live Server**
+5. 浏览器会自动打开，每次保存文件后页面自动刷新
 
 ---
 
@@ -50,7 +97,7 @@
 ### 第一阶段：完善文档与可维护性（近期）
 
 - [ ] **补充 README**：使用截图展示界面，提供自定义题库 JSON 格式说明与示例
-- [ ] **添加 .gitignore**：排除系统文件（`.DS_Store`、`Thumbs.db` 等）
+- [x] **添加 .gitignore**：排除系统文件（`.DS_Store`、`Thumbs.db` 等）
 - [ ] **代码拆分**：将 CSS、JavaScript 分离到独立文件（`style.css`、`app.js`），提升可读性与可维护性
 - [ ] **代码注释完善**：对核心算法（自适应排序、掌握度计算）补充中文注释
 
@@ -71,7 +118,7 @@
 - [ ] **无障碍优化（a11y）**：补充 ARIA 标签、键盘导航支持、高对比度主题
 - [ ] **PWA 支持**：添加 Service Worker 与 manifest，支持离线使用与桌面安装
 - [ ] **后端 / 云同步（可选）**：接入轻量后端（如 Supabase / Firebase）实现多设备数据同步与用户账号体系
-- [ ] **CI/CD**：配置 GitHub Actions 自动运行测试并将静态文件部署到 GitHub Pages
+- [x] **CI/CD**：配置 GitHub Actions 自动将静态文件部署到 GitHub Pages（每次推送 `main` 分支自动触发）
 
 ---
 
