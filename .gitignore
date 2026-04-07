@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv*/
+.browser_data/
+data/study_record.json
+~$*.docx
